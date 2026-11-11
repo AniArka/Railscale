@@ -480,7 +480,6 @@ public class BookingService {
                     case AC_TIER_3 -> BigDecimal.valueOf(750.00);
                     case CHAIR_CAR -> BigDecimal.valueOf(500.00);
                     case SLEEPER -> BigDecimal.valueOf(400.00);
-                    case SECOND_SITTING -> BigDecimal.valueOf(250.00);
                 };
             }
         }
