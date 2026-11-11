@@ -27,12 +27,24 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+
 railscale:
   reservation:
     hold-timeout: 5m
     payment-timeout: 2m
   reconciliation:
     interval-ms: 5000
+  redis:
+    lock-ttl: 5000
+    seat-cache-ttl: 30
+    rate-limit:
+      max-requests: 100
+      window-seconds: 60
 
 logging:
   level:

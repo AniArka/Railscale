@@ -17,12 +17,27 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+  data:
+    redis:
+      enabled: false
+
 railscale:
   reservation:
     hold-timeout: 5m
     payment-timeout: 2m
   reconciliation:
     interval-ms: 5000
+  redis:
+    lock-ttl: 5000
+    seat-cache-ttl: 30
+    rate-limit:
+      max-requests: 100
+      window-seconds: 60
 
 logging:
   level:

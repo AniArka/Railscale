@@ -24,6 +24,8 @@ import com.railscale.outbox.repository.OutboxEventRepository;
 import com.railscale.payment.domain.Payment;
 import com.railscale.payment.domain.PaymentStatus;
 import com.railscale.payment.repository.PaymentRepository;
+import com.railscale.redis.cache.SeatCacheService;
+import com.railscale.redis.lock.RedisLockService;
 import com.railscale.train.domain.CoachType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,10 +39,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 
 @Service
 public class BookingService {
@@ -55,6 +62,11 @@ public class BookingService {
     private final ProcessedEventRepository processedEventRepository;
     private final IdempotencyService idempotencyService;
     private final ObjectMapper objectMapper;
+    private final ApplicationContext applicationContext;
+
+    // Redis services are optional — null when Redis is not configured
+    private RedisLockService redisLockService;
+    private SeatCacheService seatCacheService;
 
     private final Duration holdTimeout;
     private final Duration paymentTimeout;
@@ -68,6 +80,7 @@ public class BookingService {
         ProcessedEventRepository processedEventRepository,
         IdempotencyService idempotencyService,
         ObjectMapper objectMapper,
+        ApplicationContext applicationContext,
         @Value("${railscale.reservation.hold-timeout:5m}") Duration holdTimeout,
         @Value("${railscale.reservation.payment-timeout:2m}") Duration paymentTimeout
     ) {
@@ -79,15 +92,34 @@ public class BookingService {
         this.processedEventRepository = processedEventRepository;
         this.idempotencyService = idempotencyService;
         this.objectMapper = objectMapper;
+        this.applicationContext = applicationContext;
         this.holdTimeout = holdTimeout;
         this.paymentTimeout = paymentTimeout;
     }
 
+    @Autowired(required = false)
+    public void setRedisLockService(RedisLockService redisLockService) {
+        this.redisLockService = redisLockService;
+    }
+
+    @Autowired(required = false)
+    public void setSeatCacheService(SeatCacheService seatCacheService) {
+        this.seatCacheService = seatCacheService;
+    }
+
     /**
-     * Section 34 & 35: Critical Booking Hold Transaction.
-     * Locks inventory rows deterministically with FOR UPDATE and validates availability.
+     * Section 34: Critical Booking Hold — Orchestrator.
+     * This method is NOT @Transactional because Redis lock acquire/release
+     * must happen OUTSIDE the database transaction (Invariant 4: no network
+     * calls while holding PostgreSQL row locks).
+     *
+     * Flow:
+     * 1. Atomic idempotency gate
+     * 2. Acquire Redis locks (sorted by inventory ID)  ← Redis coordination
+     * 3. PostgreSQL transaction (holdSeatsInternal)
+     * 4. Release Redis locks
+     * 5. Update seat cache                              ← Redis cache
      */
-    @Transactional
     public BookingResponse holdSeats(
         UUID userId,
         HoldBookingRequest request,
@@ -111,13 +143,50 @@ public class BookingService {
             }
         }
 
-        // 2. Sort identifiers deterministically before database query
+        // 2. Sort identifiers deterministically
         List<UUID> requestedSeatIds = request.seatIds().stream()
             .distinct()
             .sorted()
             .toList();
 
-        // 3. Pessimistic write lock in canonical inventory ID order
+        // 3. Acquire Redis distributed locks (Section 16-17)
+        //    If Redis unavailable or not configured, returns empty — fall back to DB-only (Invariant 5)
+        Optional<String> ownerToken = redisLockService != null
+            ? redisLockService.acquireLocks(request.journeyId(), requestedSeatIds)
+            : Optional.empty();
+
+        try {
+            // 4. Execute the actual DB transaction via proxy to ensure @Transactional works
+            BookingService self = applicationContext.getBean(BookingService.class);
+            BookingResponse response = self.holdSeatsInternal(userId, request, idempotencyKey, requestedSeatIds);
+
+            // 5. Update seat cache after successful hold
+            updateCacheAfterHold(request.journeyId(), requestedSeatIds);
+
+            return response;
+        } finally {
+            // 6. Always release Redis locks (Section 18)
+            ownerToken.ifPresent(token -> {
+                if (redisLockService != null) {
+                    redisLockService.releaseLocks(request.journeyId(), requestedSeatIds, token);
+                }
+            });
+        }
+    }
+
+    /**
+     * Section 34 & 35: Critical Booking Hold Transaction.
+     * Locks inventory rows deterministically with FOR UPDATE and validates availability.
+     * This is called WITHIN the Redis lock window.
+     */
+    @Transactional
+    public BookingResponse holdSeatsInternal(
+        UUID userId,
+        HoldBookingRequest request,
+        String idempotencyKey,
+        List<UUID> requestedSeatIds
+    ) {
+        // 1. Pessimistic write lock in canonical inventory ID order
         List<SeatInventory> lockedInventory = seatInventoryRepository
             .findByJourneyIdAndSeatIdInForUpdate(request.journeyId(), requestedSeatIds);
 
@@ -139,7 +208,7 @@ public class BookingService {
             .sorted(Comparator.comparing(SeatInventory::getId))
             .toList();
 
-        // 4. Validate that all seats are AVAILABLE and have no active hold
+        // 2. Validate that all seats are AVAILABLE and have no active hold
         Instant now = Instant.now();
         Instant heldUntil = now.plus(holdTimeout);
 
@@ -155,18 +224,18 @@ public class BookingService {
             }
         }
 
-        // 5. Calculate total amount
+        // 3. Calculate total amount
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (SeatInventory inventory : lockedInventory) {
             totalAmount = totalAmount.add(determineSeatPrice(inventory));
         }
 
-        // 6. Create Booking
+        // 4. Create Booking
         Booking booking = new Booking(userId, request.journeyId(), totalAmount);
         booking.setStatus(BookingStatus.HELD);
         booking = bookingRepository.save(booking);
 
-        // 7. Create BookingItems & update SeatInventory
+        // 5. Create BookingItems & update SeatInventory
         List<BookingItem> items = new ArrayList<>(lockedInventory.size());
         for (SeatInventory inventory : lockedInventory) {
             BigDecimal price = determineSeatPrice(inventory);
@@ -183,7 +252,7 @@ public class BookingService {
         }
         bookingItemRepository.saveAll(items);
 
-        // 8. Invariant 6: Create outbox event in the same transaction
+        // 6. Invariant 6: Create outbox event in the same transaction
         Map<String, Object> outboxPayload = new LinkedHashMap<>();
         outboxPayload.put("bookingId", booking.getId());
         outboxPayload.put("userId", userId);
@@ -202,7 +271,7 @@ public class BookingService {
 
         BookingResponse response = BookingResponse.fromEntity(booking, heldUntil);
 
-        // 9. Store idempotent response
+        // 7. Store idempotent response
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             idempotencyService.recordResponse(userId, idempotencyKey, 201, toJson(response));
         }
@@ -272,6 +341,9 @@ public class BookingService {
             "PaymentInitiated",
             toJson(outboxPayload)
         ));
+
+        // Invalidate seat cache after confirmation
+        if (seatCacheService != null) seatCacheService.invalidateJourneyCache(booking.getJourneyId());
 
         return BookingResponse.fromEntity(booking, paymentDeadline);
     }
@@ -386,6 +458,9 @@ public class BookingService {
             }
         }
 
+        // Invalidate seat cache after payment processing
+        if (seatCacheService != null) seatCacheService.invalidateJourneyCache(booking.getJourneyId());
+
         return BookingResponse.fromEntity(booking);
     }
 
@@ -464,6 +539,9 @@ public class BookingService {
             throw new ConflictException("Booking in status " + booking.getStatus() + " cannot be cancelled");
         }
 
+        // Invalidate seat cache after cancellation
+        if (seatCacheService != null) seatCacheService.invalidateJourneyCache(booking.getJourneyId());
+
         return BookingResponse.fromEntity(booking);
     }
 
@@ -495,6 +573,21 @@ public class BookingService {
             }
         }
         return BigDecimal.valueOf(500.00);
+    }
+
+    /**
+     * Update Redis seat cache after a successful hold.
+     */
+    private void updateCacheAfterHold(UUID journeyId, List<UUID> seatIds) {
+        try {
+            Map<UUID, SeatStatus> updates = new HashMap<>();
+            for (UUID seatId : seatIds) {
+                updates.put(seatId, SeatStatus.HELD);
+            }
+            if (seatCacheService != null) seatCacheService.bulkUpdateSeatStatuses(journeyId, updates);
+        } catch (Exception e) {
+            log.debug("Non-critical: failed to update seat cache after hold: {}", e.getMessage());
+        }
     }
 
     private String toJson(Object obj) {
