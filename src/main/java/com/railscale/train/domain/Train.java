@@ -7,8 +7,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "trains")
@@ -24,7 +24,7 @@ public class Train extends BaseEntity {
     private int totalCoaches = 0;
 
     @OneToMany(mappedBy = "train", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Coach> coaches = new ArrayList<>();
+    private Set<Coach> coaches = new LinkedHashSet<>();
 
     public Train() {
     }
@@ -64,11 +64,11 @@ public class Train extends BaseEntity {
         this.totalCoaches = totalCoaches;
     }
 
-    public List<Coach> getCoaches() {
+    public Set<Coach> getCoaches() {
         return coaches;
     }
 
-    public void setCoaches(List<Coach> coaches) {
+    public void setCoaches(Set<Coach> coaches) {
         this.coaches = coaches;
         this.totalCoaches = coaches != null ? coaches.size() : 0;
     }

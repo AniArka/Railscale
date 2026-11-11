@@ -3,6 +3,9 @@ package com.railscale.idempotency.service;
 import com.railscale.common.exception.ConflictException;
 import com.railscale.idempotency.domain.IdempotencyKey;
 import com.railscale.idempotency.repository.IdempotencyKeyRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +21,8 @@ import java.util.UUID;
 
 @Service
 public class IdempotencyService {
+
+    private static final Logger log = LoggerFactory.getLogger(IdempotencyService.class);
 
     private final IdempotencyKeyRepository idempotencyKeyRepository;
 
@@ -42,6 +47,7 @@ public class IdempotencyService {
     /**
      * Section 8 & Section 11: Atomic idempotency gate.
      * Uses REQUIRES_NEW propagation to commit the reservation lease independently of subsequent rollback.
+     * Uses standard JPA save + unique constraint enforcement — works on PostgreSQL, H2, and all JPA-compliant databases.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public GateResult enterGate(UUID userId, String idempotencyKey, String requestPayload) {
@@ -50,39 +56,33 @@ public class IdempotencyService {
         }
 
         String requestHash = hashPayload(requestPayload);
-        Instant now = Instant.now();
-        Instant expiresAt = now.plus(1, ChronoUnit.DAYS);
-        UUID recordId = UUID.randomUUID();
 
-        int inserted = idempotencyKeyRepository.insertIfAbsent(
-            recordId,
-            userId,
-            idempotencyKey,
-            requestHash,
-            now,
-            expiresAt
-        );
-
-        if (inserted == 1) {
-            return GateResult.newRequest();
-        }
-
-        // Key already exists: evaluate existing record
+        // Check if key already exists
         Optional<IdempotencyKey> existingOpt = idempotencyKeyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
-        if (existingOpt.isEmpty()) {
+
+        if (existingOpt.isPresent()) {
+            return evaluateExistingKey(existingOpt.get(), requestHash);
+        }
+
+        // Try to insert new key — the UNIQUE(user_id, idempotency_key) constraint
+        // guarantees atomicity against concurrent inserts on both PostgreSQL and H2.
+        try {
+            Instant now = Instant.now();
+            Instant expiresAt = now.plus(1, ChronoUnit.DAYS);
+            IdempotencyKey newKey = new IdempotencyKey(userId, idempotencyKey, requestHash, expiresAt);
+            idempotencyKeyRepository.saveAndFlush(newKey);
+            return GateResult.newRequest();
+        } catch (DataIntegrityViolationException e) {
+            // Race condition: another thread inserted between our check and save.
+            // Re-read and evaluate.
+            log.debug("Idempotency key race condition detected for key: {}", idempotencyKey);
+            Optional<IdempotencyKey> raceOpt = idempotencyKeyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
+            if (raceOpt.isPresent()) {
+                return evaluateExistingKey(raceOpt.get(), requestHash);
+            }
+            // Should not happen, but treat as new
             return GateResult.newRequest();
         }
-
-        IdempotencyKey existing = existingOpt.get();
-        if (!existing.getRequestHash().equals(requestHash)) {
-            throw new ConflictException("IDEMPOTENCY_KEY_REUSED: Idempotency key reused with different request payload");
-        }
-
-        if (existing.getResponseStatus() == null) {
-            throw new ConflictException("REQUEST_IN_PROGRESS: Request is currently in progress");
-        }
-
-        return GateResult.replay(existing.getResponseStatus(), existing.getResponseBody());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -91,6 +91,16 @@ public class IdempotencyService {
             return;
         }
         idempotencyKeyRepository.storeResponse(userId, idempotencyKey, status, responseBody);
+    }
+
+    private GateResult evaluateExistingKey(IdempotencyKey existing, String requestHash) {
+        if (!existing.getRequestHash().equals(requestHash)) {
+            throw new ConflictException("IDEMPOTENCY_KEY_REUSED: Idempotency key reused with different request payload");
+        }
+        if (existing.getResponseStatus() == null) {
+            throw new ConflictException("REQUEST_IN_PROGRESS: Request is currently in progress");
+        }
+        return GateResult.replay(existing.getResponseStatus(), existing.getResponseBody());
     }
 
     public String hashPayload(String payload) {

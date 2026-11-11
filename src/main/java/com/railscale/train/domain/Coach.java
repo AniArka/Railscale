@@ -13,8 +13,8 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(
@@ -38,7 +38,7 @@ public class Coach extends BaseEntity {
     private int totalSeats = 0;
 
     @OneToMany(mappedBy = "coach", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Seat> seats = new ArrayList<>();
+    private Set<Seat> seats = new LinkedHashSet<>();
 
     public Coach() {
     }
@@ -87,11 +87,11 @@ public class Coach extends BaseEntity {
         this.totalSeats = totalSeats;
     }
 
-    public List<Seat> getSeats() {
+    public Set<Seat> getSeats() {
         return seats;
     }
 
-    public void setSeats(List<Seat> seats) {
+    public void setSeats(Set<Seat> seats) {
         this.seats = seats;
         this.totalSeats = seats != null ? seats.size() : 0;
     }

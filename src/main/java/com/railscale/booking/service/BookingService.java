@@ -12,6 +12,8 @@ import com.railscale.booking.repository.BookingRepository;
 import com.railscale.common.exception.BadRequestException;
 import com.railscale.common.exception.ConflictException;
 import com.railscale.common.exception.ResourceNotFoundException;
+import com.railscale.event.domain.ProcessedEvent;
+import com.railscale.event.domain.ProcessedEventId;
 import com.railscale.event.repository.ProcessedEventRepository;
 import com.railscale.idempotency.service.IdempotencyService;
 import com.railscale.inventory.domain.SeatInventory;
@@ -26,6 +28,7 @@ import com.railscale.train.domain.CoachType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -280,11 +283,19 @@ public class BookingService {
      */
     @Transactional
     public BookingResponse processPaymentResult(UUID bookingId, PaymentStatus resultStatus, UUID eventId) {
-        // Consumer deduplication gate
+        // Consumer deduplication gate — uses standard JPA, works on both PostgreSQL and H2
         if (eventId != null) {
-            int inserted = processedEventRepository.insertIfAbsent("payment-result-consumer", eventId, Instant.now());
-            if (inserted == 0) {
+            ProcessedEventId peId = new ProcessedEventId("payment-result-consumer", eventId);
+            if (processedEventRepository.existsById(peId)) {
                 log.info("Duplicate payment event ignored: {}", eventId);
+                return bookingRepository.findWithItemsById(bookingId)
+                    .map(BookingResponse::fromEntity)
+                    .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+            }
+            try {
+                processedEventRepository.saveAndFlush(new ProcessedEvent("payment-result-consumer", eventId, Instant.now()));
+            } catch (DataIntegrityViolationException e) {
+                log.info("Duplicate payment event ignored (race): {}", eventId);
                 return bookingRepository.findWithItemsById(bookingId)
                     .map(BookingResponse::fromEntity)
                     .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
