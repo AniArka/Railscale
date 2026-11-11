@@ -3,14 +3,18 @@ package com.railscale.common.model;
 import jakarta.persistence.Column;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Transient;
+import org.springframework.data.domain.Persistable;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
 @MappedSuperclass
-public abstract class BaseEntity {
+public abstract class BaseEntity implements Persistable<UUID> {
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -21,6 +25,9 @@ public abstract class BaseEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Transient
+    private boolean isNew = true;
 
     @PrePersist
     protected void onCreate() {
@@ -36,6 +43,12 @@ public abstract class BaseEntity {
         }
     }
 
+    @PostPersist
+    @PostLoad
+    protected void markNotNew() {
+        this.isNew = false;
+    }
+
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
@@ -43,6 +56,11 @@ public abstract class BaseEntity {
 
     public UUID getId() {
         return id;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
     }
 
     public void setId(UUID id) {
