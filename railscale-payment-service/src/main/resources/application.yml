@@ -1,0 +1,20 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+railscale:
+  payment:
+    failure-rate: 0.05
+
+logging:
+  level:
+    com.railscale: INFO

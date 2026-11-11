@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    gateway:
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/users/**
+
+        - id: search-service
+          uri: ${SEARCH_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/search/**
+
+        - id: booking-service
+          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/bookings/**, /api/journeys/**, /api/trains/**, /api/stations/**
+
+logging:
+  level:
+    com.railscale: INFO
+    org.springframework.cloud.gateway: INFO

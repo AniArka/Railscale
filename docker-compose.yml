@@ -1,0 +1,183 @@
+version: '3.8'
+
+networks:
+  public-network:
+    driver: bridge
+  internal-network:
+    driver: bridge
+
+services:
+  # -------------------------------------------------------------
+  # Infrastructure
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: railscale-postgres
+    networks:
+      - internal-network
+    environment:
+      POSTGRES_DB: railscale
+      POSTGRES_USER: railscale
+      POSTGRES_PASSWORD: railscale
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U railscale -d railscale"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: railscale-redis
+    networks:
+      - internal-network
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: railscale-zookeeper
+    networks:
+      - internal-network
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: railscale-kafka
+    networks:
+      - internal-network
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # -------------------------------------------------------------
+  # Public Gateway (Section 27, 29) - Only service exposed externally
+  # -------------------------------------------------------------
+  api-gateway:
+    build:
+      context: .
+      dockerfile: railscale-api-gateway/Dockerfile
+    container_name: railscale-api-gateway
+    networks:
+      - public-network
+      - internal-network
+    ports:
+      - "8080:8080"
+    environment:
+      USER_SERVICE_URL: http://user-service:8081
+      SEARCH_SERVICE_URL: http://search-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+    depends_on:
+      - user-service
+      - search-service
+      - booking-service
+
+  # -------------------------------------------------------------
+  # Microservices (internal-network only per Section 29)
+  # -------------------------------------------------------------
+  user-service:
+    build:
+      context: .
+      dockerfile: railscale-user-service/Dockerfile
+    container_name: railscale-user-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  search-service:
+    build:
+      context: .
+      dockerfile: railscale-search-service/Dockerfile
+    container_name: railscale-search-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: railscale-booking-service/Dockerfile
+    container_name: railscale-booking-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: railscale-payment-service/Dockerfile
+    container_name: railscale-payment-service
+    networks:
+      - internal-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_started
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: railscale-notification-service/Dockerfile
+    container_name: railscale-notification-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+volumes:
+  pgdata:

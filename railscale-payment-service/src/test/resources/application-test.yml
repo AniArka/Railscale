@@ -1,0 +1,15 @@
+server:
+  port: 8084
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+railscale:
+  payment:
+    failure-rate: 0.0
+
+logging:
+  level:
+    com.railscale: DEBUG

@@ -1,0 +1,21 @@
+server:
+  port: 8085
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:notification_test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+logging:
+  level:
+    com.railscale: DEBUG
