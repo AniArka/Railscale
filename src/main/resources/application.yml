@@ -33,6 +33,20 @@ spring:
       port: ${REDIS_PORT:6379}
       timeout: 2000ms
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+    consumer:
+      group-id: railscale-booking
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+
 railscale:
   reservation:
     hold-timeout: 5m
@@ -45,6 +59,10 @@ railscale:
     rate-limit:
       max-requests: 100
       window-seconds: 60
+  outbox:
+    poll-interval-ms: 1000
+    batch-size: 50
+    lease-duration-ms: 30000
 
 logging:
   level:
