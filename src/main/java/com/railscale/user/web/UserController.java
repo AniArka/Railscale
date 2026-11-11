@@ -1,5 +1,7 @@
 package com.railscale.user.web;
 
+import com.railscale.booking.dto.BookingResponse;
+import com.railscale.booking.service.BookingService;
 import com.railscale.user.service.UserService;
 import com.railscale.user.web.dto.RegisterUserRequest;
 import com.railscale.user.web.dto.UserResponse;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -20,9 +23,11 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final BookingService bookingService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, BookingService bookingService) {
         this.userService = userService;
+        this.bookingService = bookingService;
     }
 
     @PostMapping("/register")
@@ -34,5 +39,10 @@ public class UserController {
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getUser(@PathVariable UUID id) {
         return ResponseEntity.ok(userService.getById(id));
+    }
+
+    @GetMapping("/{id}/bookings")
+    public ResponseEntity<List<BookingResponse>> getUserBookings(@PathVariable UUID id) {
+        return ResponseEntity.ok(bookingService.getBookingsForUser(id));
     }
 }
