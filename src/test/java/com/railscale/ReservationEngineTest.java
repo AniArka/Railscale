@@ -8,6 +8,8 @@ import com.railscale.booking.dto.HoldBookingRequest;
 import com.railscale.booking.repository.BookingRepository;
 import com.railscale.booking.service.BookingService;
 import com.railscale.common.exception.ConflictException;
+import com.railscale.event.repository.ProcessedEventRepository;
+import com.railscale.idempotency.repository.IdempotencyKeyRepository;
 import com.railscale.idempotency.service.IdempotencyService;
 import com.railscale.inventory.domain.SeatInventory;
 import com.railscale.inventory.domain.SeatStatus;
@@ -17,6 +19,7 @@ import com.railscale.journey.repository.JourneyRepository;
 import com.railscale.outbox.domain.OutboxEvent;
 import com.railscale.outbox.repository.OutboxEventRepository;
 import com.railscale.payment.domain.PaymentStatus;
+import com.railscale.payment.repository.PaymentRepository;
 import com.railscale.reconciliation.ReservationReconciliationService;
 import com.railscale.train.domain.BerthType;
 import com.railscale.train.domain.Coach;
@@ -96,6 +99,15 @@ class ReservationEngineTest {
     private UserRepository userRepository;
 
     @Autowired
+    private IdempotencyKeyRepository idempotencyKeyRepository;
+
+    @Autowired
+    private ProcessedEventRepository processedEventRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private User user1;
@@ -108,7 +120,11 @@ class ReservationEngineTest {
 
     @BeforeEach
     void setUp() {
+        // Delete in FK-safe order: children before parents
+        processedEventRepository.deleteAll();
+        idempotencyKeyRepository.deleteAll();
         outboxEventRepository.deleteAll();
+        paymentRepository.deleteAll();
         bookingRepository.deleteAll();
         seatInventoryRepository.deleteAll();
         journeyRepository.deleteAll();
