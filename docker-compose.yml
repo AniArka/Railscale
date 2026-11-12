@@ -69,7 +69,22 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   # -------------------------------------------------------------
-  # Public Gateway (Section 27, 29) - Only service exposed externally
+  # Service Discovery (Section 30)
+  # -------------------------------------------------------------
+  eureka-server:
+    build:
+      context: .
+      dockerfile: railscale-eureka-server/Dockerfile
+    container_name: railscale-eureka-server
+    networks:
+      - internal-network
+    ports:
+      - "8761:8761"
+    environment:
+      EUREKA_HOSTNAME: eureka-server
+
+  # -------------------------------------------------------------
+  # Public Gateway (Section 27, 29, 30) - Only service exposed externally
   # -------------------------------------------------------------
   api-gateway:
     build:
@@ -82,10 +97,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      USER_SERVICE_URL: http://user-service:8081
-      SEARCH_SERVICE_URL: http://search-service:8082
-      BOOKING_SERVICE_URL: http://booking-service:8083
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      USER_SERVICE_URL: lb://user-service
+      SEARCH_SERVICE_URL: lb://search-service
+      BOOKING_SERVICE_URL: lb://booking-service
     depends_on:
+      - eureka-server
       - user-service
       - search-service
       - booking-service
@@ -104,9 +121,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
       SPRING_DATASOURCE_USERNAME: railscale
       SPRING_DATASOURCE_PASSWORD: railscale
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       postgres:
         condition: service_healthy
+      eureka-server:
+        condition: service_started
 
   search-service:
     build:
@@ -120,10 +140,13 @@ services:
       SPRING_DATASOURCE_USERNAME: railscale
       SPRING_DATASOURCE_PASSWORD: railscale
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_started
+      eureka-server:
         condition: service_started
 
   booking-service:
@@ -140,12 +163,15 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       kafka:
+        condition: service_started
+      eureka-server:
         condition: service_started
 
   payment-service:
@@ -157,8 +183,11 @@ services:
       - internal-network
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       kafka:
+        condition: service_started
+      eureka-server:
         condition: service_started
 
   notification-service:
@@ -173,10 +202,13 @@ services:
       SPRING_DATASOURCE_USERNAME: railscale
       SPRING_DATASOURCE_PASSWORD: railscale
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_started
+      eureka-server:
         condition: service_started
 
 volumes:

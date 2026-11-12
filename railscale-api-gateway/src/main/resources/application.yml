@@ -9,21 +9,33 @@ spring:
     compatibility-verifier:
       enabled: false
     gateway:
+      discovery:
+        locator:
+          enabled: false
       routes:
         - id: user-service
-          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          uri: ${USER_SERVICE_URL:lb://user-service}
           predicates:
             - Path=/api/users/**
 
         - id: search-service
-          uri: ${SEARCH_SERVICE_URL:http://localhost:8082}
+          uri: ${SEARCH_SERVICE_URL:lb://search-service}
           predicates:
             - Path=/api/search/**
 
         - id: booking-service
-          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          uri: ${BOOKING_SERVICE_URL:lb://booking-service}
           predicates:
             - Path=/api/bookings/**, /api/journeys/**, /api/trains/**, /api/stations/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
 
 logging:
   level:

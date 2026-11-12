@@ -1,14 +1,17 @@
 server:
-  port: 8080
+  port: 8083
 
 spring:
   application:
-    name: railscale-core
+    name: booking-service
+  cloud:
+    compatibility-verifier:
+      enabled: false
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/railscale_db}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/railscale}
+    username: ${SPRING_DATASOURCE_USERNAME:railscale}
+    password: ${SPRING_DATASOURCE_PASSWORD:railscale}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -46,6 +49,15 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       enable-auto-commit: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
 
 railscale:
   reservation:

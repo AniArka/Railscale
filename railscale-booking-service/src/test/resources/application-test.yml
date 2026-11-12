@@ -27,6 +27,12 @@ spring:
     redis:
       enabled: false
 
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
 railscale:
   reservation:
     hold-timeout: 5m
