@@ -28,6 +28,7 @@
         <module>railscale-search-service</module>
         <module>railscale-payment-service</module>
         <module>railscale-notification-service</module>
+        <module>railscale-eureka-server</module>
         <module>railscale-api-gateway</module>
     </modules>
 
