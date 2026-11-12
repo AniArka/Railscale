@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RailScale - Distributed Railway Seat Reservation Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0f1d;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --success-light: rgba(16, 185, 129, 0.15);
+      --warning: #f59e0b;
+      --warning-light: rgba(245, 158, 11, 0.15);
+      --danger: #ef4444;
+      --danger-light: rgba(239, 68, 68, 0.15);
+      --info: #06b6d4;
+      --selected: #8b5cf6;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top Navigation */
+    header {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .brand-icon {
+      font-size: 1.8rem;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      padding: 0.35rem 0.6rem;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.35);
+    }
+
+    .brand-text h1 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #ffffff, #c7d2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-text p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .system-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #1e293b;
+      padding: 0.4rem 0.85rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      border: 1px solid #334155;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    .api-endpoint-config {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .api-endpoint-config input {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #38bdf8;
+      font-family: var(--font-mono);
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      width: 190px;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 1.5rem 2rem 3rem 2rem;
+      max-width: 1500px;
+      margin: 0 auto;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 1.75rem;
+    }
+
+    @media (max-width: 1100px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card Panels */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.4rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      margin-bottom: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #e2e8f0;
+      border-bottom: 1px solid #1f2937;
+      padding-bottom: 0.65rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+    }
+
+    .badge-success { background: var(--success-light); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-warning { background: var(--warning-light); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-danger { background: var(--danger-light); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-info { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .form-control {
+      width: 100%;
+      background: #0b1120;
+      border: 1px solid #273549;
+      color: #f1f5f9;
+      font-family: var(--font-sans);
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      transition: all 0.2s;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.86rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: none;
+      font-family: var(--font-sans);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: white;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background: linear-gradient(135deg, #059669, #047857);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background: #1e293b;
+      border-color: #475569;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    /* Left Column: Passenger & Search */
+    .user-profile-box {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .user-profile-box .user-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.35rem;
+      font-size: 0.82rem;
+    }
+
+    .user-profile-box .user-label {
+      color: var(--text-muted);
+    }
+
+    .user-profile-box .user-value {
+      color: #38bdf8;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Journey Results */
+    .journey-card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 1rem;
+      margin-top: 1rem;
+      transition: all 0.2s;
+    }
+
+    .journey-card.active {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+    }
+
+    .journey-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .train-num {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .journey-route {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    .journey-station {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .station-code {
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: #38bdf8;
+      font-size: 1rem;
+    }
+
+    .station-name {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .route-arrow {
+      color: #64748b;
+      font-size: 1.1rem;
+      padding: 0 0.5rem;
+    }
+
+    /* Coach & Seat Map Layout */
+    .coach-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      overflow-x: auto;
+      padding-bottom: 0.4rem;
+    }
+
+    .coach-tab {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .coach-tab:hover {
+      background: #334155;
+      color: #f1f5f9;
+    }
+
+    .coach-tab.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+    }
+
+    .seat-map-legend {
+      display: flex;
+      gap: 1.25rem;
+      align-items: center;
+      margin-bottom: 1.2rem;
+      font-size: 0.8rem;
+      flex-wrap: wrap;
+      background: #0f172a;
+      padding: 0.65rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .legend-box {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+
+    .seat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+      gap: 0.65rem;
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 0.4rem;
+    }
+
+    /* Seat Card */
+    .seat-card {
+      background: #0f172a;
+      border: 1px solid #273549;
+      border-radius: 8px;
+      padding: 0.5rem 0.25rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 74px;
+    }
+
+    .seat-card:hover:not(.booked):not(.held) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      border-color: #6366f1;
+    }
+
+    .seat-num {
+      font-weight: 800;
+      font-size: 0.95rem;
+      font-family: var(--font-mono);
+    }
+
+    .seat-berth {
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: -0.01em;
+    }
+
+    .seat-status-pill {
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 0.1rem 0.2rem;
+      border-radius: 4px;
+      margin-top: 0.15rem;
+    }
+
+    /* Seat States */
+    .seat-card.available {
+      border-color: #065f46;
+      background: rgba(16, 185, 129, 0.08);
+      color: #34d399;
+    }
+    .seat-card.available .seat-status-pill {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+    }
+
+    .seat-card.selected {
+      border-color: #a855f7;
+      background: rgba(168, 85, 247, 0.25);
+      color: #ffffff;
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+      transform: scale(1.04);
+    }
+    .seat-card.selected .seat-status-pill {
+      background: #a855f7;
+      color: #ffffff;
+    }
+
+    .seat-card.held {
+      border-color: #92400e;
+      background: rgba(245, 158, 11, 0.1);
+      color: #fbbf24;
+      cursor: not-allowed;
+    }
+    .seat-card.held .seat-status-pill {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+    }
+
+    .seat-card.booked {
+      border-color: #7f1d1d;
+      background: rgba(239, 68, 68, 0.08);
+      color: #f87171;
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+    .seat-card.booked .seat-status-pill {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    /* Reservation State Machine Workflow */
+    .stepper {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+
+    .stepper::before {
+      content: '';
+      position: absolute;
+      top: 18px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: #1f2937;
+      z-index: 1;
+    }
+
+    .step-item {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .step-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #1e293b;
+      border: 2px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+
+    .step-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .step-item.active .step-icon {
+      background: var(--primary);
+      border-color: #818cf8;
+      color: white;
+      box-shadow: 0 0 14px rgba(99, 102, 241, 0.6);
+    }
+
+    .step-item.active .step-label {
+      color: #c7d2fe;
+    }
+
+    .step-item.completed .step-icon {
+      background: var(--success);
+      border-color: #34d399;
+      color: white;
+    }
+
+    .step-item.completed .step-label {
+      color: #6ee7b7;
+    }
+
+    /* Active Booking Box */
+    .active-booking-details {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .booking-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      font-size: 0.84rem;
+      margin-bottom: 1rem;
+    }
+
+    .booking-grid .label {
+      color: var(--text-muted);
+    }
+
+    .booking-grid .val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: #f1f5f9;
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .timer-alert {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: #fbbf24;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .timer-badge {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      font-weight: 800;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    /* Live Event Terminal Console */
+    .console-section {
+      grid-column: 1 / -1;
+      background: #090d16;
+      border: 1px solid #1f2937;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .console-header {
+      background: #111827;
+      padding: 0.65rem 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .console-header h3 {
+      font-size: 0.85rem;
+      font-family: var(--font-mono);
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .console-body {
+      padding: 0.85rem 1.2rem;
+      height: 180px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+
+    .log-line {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 0.25rem;
+      word-break: break-all;
+    }
+
+    .log-time { color: #64748b; }
+    .log-method { font-weight: 700; color: #38bdf8; }
+    .log-url { color: #cbd5e1; }
+    .log-status-200, .log-status-201 { color: #34d399; font-weight: 700; }
+    .log-status-400, .log-status-500 { color: #f87171; font-weight: 700; }
+    .log-info { color: #a5b4fc; }
+
+    /* Toast Notification */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 0.85rem 1.25rem;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 100;
+      display: none;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      transition: all 0.3s;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🚆</div>
+      <div class="brand-text">
+        <h1>RailScale Demonstration UI</h1>
+        <p>Phase 1-10 Distributed Reservation Engine & Observability</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="system-status">
+        <div class="status-dot"></div>
+        <span id="backend-status-text">Backend Connected</span>
+      </div>
+
+      <div class="api-endpoint-config">
+        <span>API:</span>
+        <input type="text" id="api-base-url" value="http://localhost:8083" placeholder="http://localhost:8083">
+        <button class="btn btn-outline" style="padding: 0.35rem 0.65rem;" onclick="testConnection()">↻</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Body Content -->
+  <main>
+    
+    <!-- Left Column: Passenger & Search Panel -->
+    <section>
+      
+      <!-- User Profile Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Active Passenger</span>
+          <span class="badge badge-info">Context</span>
+        </div>
+
+        <div class="user-profile-box">
+          <div class="user-row">
+            <span class="user-label">Name:</span>
+            <span class="user-value" id="user-display-name">Demo Passenger</span>
+          </div>
+          <div class="user-row">
+            <span class="user-label">Email:</span>
+            <span class="user-value" id="user-display-email">demo@railscale.com</span>
+          </div>
+          <div class="user-row">
+            <span class="user-label">User ID:</span>
+            <span class="user-value" id="user-display-id" title="Loading...">...</span>
+          </div>
+        </div>
+
+        <button class="btn btn-outline btn-block" onclick="generateDemoPassenger()">
+          ⚡ Quick Switch / New Passenger
+        </button>
+      </div>
+
+      <!-- Search Journeys Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Step 1: Train Search</span>
+          <span class="badge badge-success">Schedules</span>
+        </div>
+
+        <div class="form-group">
+          <label>Source Station (From)</label>
+          <select id="select-source" class="form-control">
+            <option value="">Loading stations...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Destination Station (To)</label>
+          <select id="select-dest" class="form-control">
+            <option value="">Loading stations...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Departure Date (UTC)</label>
+          <input type="date" id="input-date" class="form-control">
+        </div>
+
+        <button class="btn btn-primary btn-block" onclick="searchJourneys()">
+          🔍 Search Available Trains
+        </button>
+
+        <!-- Journey Search Result Card -->
+        <div id="journey-result-container" style="display: none;">
+          <div class="journey-card active" id="journey-card">
+            <div class="journey-header">
+              <span class="train-num" id="j-train-name">RS-123 Rajdhani Exp</span>
+              <span class="badge badge-success" id="j-avail-seats">248 Available</span>
+            </div>
+
+            <div class="journey-route">
+              <div class="journey-station">
+                <span class="station-code" id="j-src-code">HWH</span>
+                <span class="station-name">Howrah Jn</span>
+              </div>
+              <div class="route-arrow">➔ 17h 00m ➔</div>
+              <div class="journey-station" style="text-align: right;">
+                <span class="station-code" id="j-dst-code">NDLS</span>
+                <span class="station-name">New Delhi</span>
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-block" style="font-size: 0.8rem; padding: 0.5rem;" onclick="loadCoachSeats()">
+              🪑 View Seat Layout & Choose Berth
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Maintenance / Chaos Tools -->
+      <div class="card">
+        <div class="card-title">
+          <span>System Maintenance</span>
+          <span class="badge badge-warning">Background</span>
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+          Trigger scheduled reconciler to automatically release expired holds (5-min timeout) back into inventory.
+        </p>
+        <button class="btn btn-outline btn-block" style="font-size: 0.8rem;" onclick="triggerReconciliation()">
+          ⏱️ Run Hold Reconciliation
+        </button>
+      </div>
+
+    </section>
+
+
+    <!-- Right Column: Interactive Seat Map & Booking State Machine -->
+    <section>
+      
+      <!-- Seat Map Visualizer Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Step 2: Interactive Coach & Seat Layout</span>
+          <div id="selected-counter" class="badge badge-info">0 Seats Selected</div>
+        </div>
+
+        <!-- Coach Selector Tabs -->
+        <div class="coach-nav" id="coach-tabs-container">
+          <div class="coach-tab active" onclick="switchCoach('A1')">Coach A1 (AC 2-Tier)</div>
+          <div class="coach-tab" onclick="switchCoach('B1')">Coach B1 (AC 3-Tier)</div>
+          <div class="coach-tab" onclick="switchCoach('B2')">Coach B2 (AC 3-Tier)</div>
+          <div class="coach-tab" onclick="switchCoach('S1')">Coach S1 (Sleeper)</div>
+        </div>
+
+        <!-- Seat Map Legend -->
+        <div class="seat-map-legend">
+          <div class="legend-item">
+            <div class="legend-box" style="background: rgba(16, 185, 129, 0.4); border: 1px solid #10b981;"></div>
+            <span>Available</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-box" style="background: #a855f7;"></div>
+            <span>Selected</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-box" style="background: rgba(245, 158, 11, 0.4); border: 1px solid #f59e0b;"></div>
+            <span>Held (5-min Lock)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-box" style="background: rgba(239, 68, 68, 0.4); border: 1px solid #ef4444;"></div>
+            <span>Booked (Confirmed)</span>
+          </div>
+        </div>
+
+        <!-- Seat Grid -->
+        <div class="seat-grid" id="seat-grid-container">
+          <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 3rem;">
+            Please select a journey and click "View Seat Layout" to render berths.
+          </div>
+        </div>
+
+        <!-- Action bar under seat grid -->
+        <div style="margin-top: 1.25rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1f2937; padding-top: 1rem;">
+          <div style="font-size: 0.85rem; color: var(--text-muted);">
+            Berths: <strong id="selected-seat-names" style="color: #c7d2fe;">None</strong>
+          </div>
+          <button class="btn btn-primary" id="btn-hold-seats" onclick="holdSelectedSeats()" disabled>
+            🔒 Hold Selected Seats (Pessimistic Lock)
+          </button>
+        </div>
+      </div>
+
+      <!-- Booking State Machine & Payment Terminal Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Step 3: Reservation State Machine & Payment Terminal</span>
+          <span class="badge badge-info" id="current-booking-status-badge">NO ACTIVE BOOKING</span>
+        </div>
+
+        <!-- Workflow Stepper -->
+        <div class="stepper">
+          <div class="step-item" id="step-select">
+            <div class="step-icon">1</div>
+            <div class="step-label">Select</div>
+          </div>
+          <div class="step-item" id="step-held">
+            <div class="step-icon">2</div>
+            <div class="step-label">Held (5m)</div>
+          </div>
+          <div class="step-item" id="step-pending">
+            <div class="step-icon">3</div>
+            <div class="step-label">Payment</div>
+          </div>
+          <div class="step-item" id="step-confirmed">
+            <div class="step-icon">4</div>
+            <div class="step-label">Confirmed</div>
+          </div>
+        </div>
+
+        <!-- Active Booking Content -->
+        <div id="booking-details-box" style="display: none;">
+          <div class="timer-alert" id="timer-box">
+            <span>⚠️ Seats locked with pessimistic DB lock. Complete payment within:</span>
+            <span class="timer-badge" id="countdown-timer">05:00</span>
+          </div>
+
+          <div class="active-booking-details">
+            <div class="booking-grid">
+              <span class="label">Booking Reference:</span>
+              <span class="val" id="bk-id">...</span>
+              <span class="label">Status:</span>
+              <span class="val" id="bk-status" style="color: #38bdf8;">HELD</span>
+              <span class="label">Idempotency Key:</span>
+              <span class="val" id="bk-idempotency" style="font-size: 0.72rem;">...</span>
+              <span class="label">Seats Reserved:</span>
+              <span class="val" id="bk-seats">...</span>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btn-confirm" onclick="confirmCurrentBooking()">
+                💳 Confirm & Initiate Payment
+              </button>
+              <button class="btn btn-success" id="btn-pay-success" onclick="simulatePayment('SUCCESS')" style="display: none;">
+                ✅ Simulate Payment: SUCCESS
+              </button>
+              <button class="btn btn-danger" id="btn-pay-fail" onclick="simulatePayment('FAILED')" style="display: none;">
+                ❌ Simulate Payment: FAIL
+              </button>
+              <button class="btn btn-outline" id="btn-cancel" onclick="cancelCurrentBooking()">
+                🚫 Cancel Hold
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="no-booking-msg" style="text-align: center; color: var(--text-muted); padding: 1.5rem; font-size: 0.88rem;">
+          Select available seats above and click "Hold Selected Seats" to start a reservation transaction.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Bottom: Live Event & Audit Log Stream -->
+    <section class="console-section">
+      <div class="console-header">
+        <h3><span>⚡</span> Real-Time REST & Transaction Event Log</h3>
+        <button class="btn btn-outline" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;" onclick="clearLogs()">Clear</button>
+      </div>
+      <div class="console-body" id="event-console">
+        <div class="log-line">
+          <span class="log-time">[System]</span>
+          <span class="log-info">RailScale Interactive Console Initialized. Ready for demonstration.</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- Application Logic -->
+  <script>
+    // State
+    let baseUrl = 'http://localhost:8083';
+    let currentUser = null;
+    let stations = [];
+    let currentJourney = null;
+    let allSeats = [];
+    let activeCoach = 'A1';
+    let selectedSeatIds = new Set();
+    let currentBooking = null;
+    let countdownInterval = null;
+
+    // Initialize on DOM load
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Pick up host origin if served directly from Spring Boot
+      if (window.location.origin && window.location.origin.includes(':8083')) {
+        document.getElementById('api-base-url').value = window.location.origin;
+        baseUrl = window.location.origin;
+      }
+
+      // Default date to UTC tomorrow
+      const now = new Date();
+      now.setUTCDate(now.getUTCDate() + 1);
+      const utcTomorrow = now.toISOString().split('T')[0];
+      document.getElementById('input-date').value = utcTomorrow;
+
+      // Register or load user
+      await generateDemoPassenger();
+
+      // Load Stations
+      await loadStations();
+
+      // Check connection
+      await testConnection();
+    });
+
+    function getBaseUrl() {
+      const val = document.getElementById('api-base-url').value.trim();
+      return val.replace(/\/$/, '');
+    }
+
+    // Logger
+    function logEvent(method, url, status, detail) {
+      const consoleEl = document.getElementById('event-console');
+      const timeStr = new Date().toLocaleTimeString();
+      const line = document.createElement('div');
+      line.className = 'log-line';
+
+      let statusClass = 'log-status-200';
+      if (status >= 400) statusClass = 'log-status-500';
+
+      line.innerHTML = `
+        <span class="log-time">[${timeStr}]</span>
+        <span class="log-method">${method}</span>
+        <span class="log-url">${url}</span>
+        <span class="${statusClass}">[${status}]</span>
+        <span class="log-info">${detail ? (typeof detail === 'object' ? JSON.stringify(detail) : detail) : ''}</span>
+      `;
+      consoleEl.prepend(line);
+    }
+
+    function clearLogs() {
+      document.getElementById('event-console').innerHTML = '';
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.style.display = 'flex';
+      toast.style.borderColor = isError ? '#ef4444' : '#10b981';
+      toast.style.color = isError ? '#f87171' : '#34d399';
+      setTimeout(() => { toast.style.display = 'none'; }, 3500);
+    }
+
+    // Connectivity
+    async function testConnection() {
+      baseUrl = getBaseUrl();
+      try {
+        const res = await fetch(`${baseUrl}/api/stations`);
+        if (res.ok) {
+          document.getElementById('backend-status-text').innerText = 'Connected: ' + baseUrl;
+          document.querySelector('.status-dot').style.background = '#10b981';
+          logEvent('GET', '/api/stations', 200, 'Health check OK');
+        } else {
+          throw new Error('HTTP ' + res.status);
+        }
+      } catch (err) {
+        document.getElementById('backend-status-text').innerText = 'Offline / Error';
+        document.querySelector('.status-dot').style.background = '#ef4444';
+        logEvent('GET', '/api/stations', 'ERR', err.message);
+      }
+    }
+
+    // Register / Switch Passenger
+    async function generateDemoPassenger() {
+      baseUrl = getBaseUrl();
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      const email = `passenger_${rand}@railscale.com`;
+      const payload = {
+        email: email,
+        password: 'Password123!',
+        fullName: `Demo Passenger #${rand}`,
+        role: 'USER'
+      };
+
+      try {
+        const res = await fetch(`${baseUrl}/api/users/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentUser = data;
+          document.getElementById('user-display-name').innerText = data.fullName;
+          document.getElementById('user-display-email').innerText = data.email;
+          document.getElementById('user-display-id').innerText = data.id;
+          document.getElementById('user-display-id').title = data.id;
+          logEvent('POST', '/api/users/register', 201, `User registered: ${data.id}`);
+          showToast(`Passenger created: ${data.fullName}`);
+        } else {
+          throw new Error(data.debugMessage || data.detail || 'Registration failed');
+        }
+      } catch (err) {
+        logEvent('POST', '/api/users/register', 'ERR', err.message);
+        showToast('Error registering passenger', true);
+      }
+    }
+
+    // Load Stations
+    async function loadStations() {
+      baseUrl = getBaseUrl();
+      try {
+        const res = await fetch(`${baseUrl}/api/stations`);
+        stations = await res.json();
+        
+        const srcSelect = document.getElementById('select-source');
+        const dstSelect = document.getElementById('select-dest');
+        srcSelect.innerHTML = '';
+        dstSelect.innerHTML = '';
+
+        stations.forEach(st => {
+          const opt1 = document.createElement('option');
+          opt1.value = st.id;
+          opt1.textContent = `${st.name} (${st.code}) - ${st.city}`;
+          if (st.code === 'HWH') opt1.selected = true;
+          srcSelect.appendChild(opt1);
+
+          const opt2 = document.createElement('option');
+          opt2.value = st.id;
+          opt2.textContent = `${st.name} (${st.code}) - ${st.city}`;
+          if (st.code === 'NDLS') opt2.selected = true;
+          dstSelect.appendChild(opt2);
+        });
+
+        logEvent('GET', '/api/stations', 200, `Loaded ${stations.length} stations`);
+      } catch (err) {
+        logEvent('GET', '/api/stations', 'ERR', err.message);
+      }
+    }
+
+    // Search Journeys
+    async function searchJourneys() {
+      baseUrl = getBaseUrl();
+      const srcId = document.getElementById('select-source').value;
+      const dstId = document.getElementById('select-dest').value;
+      const date = document.getElementById('input-date').value;
+
+      if (!srcId || !dstId || !date) {
+        showToast('Please select source, destination, and date', true);
+        return;
+      }
+
+      const url = `${baseUrl}/api/journeys/search?sourceStationId=${srcId}&destinationStationId=${dstId}&date=${date}`;
+      try {
+        const res = await fetch(url);
+        const list = await res.json();
+        logEvent('GET', '/api/journeys/search', res.status, `Found ${list.length} journey(s)`);
+
+        if (list.length > 0) {
+          currentJourney = list[0];
+          document.getElementById('journey-result-container').style.display = 'block';
+          document.getElementById('j-train-name').innerText = currentJourney.trainNumber + ' ' + (currentJourney.trainName || 'Express');
+          document.getElementById('j-src-code').innerText = currentJourney.sourceStationCode;
+          document.getElementById('j-dst-code').innerText = currentJourney.destinationStationCode;
+          document.getElementById('j-avail-seats').innerText = currentJourney.availableSeats + ' Available';
+          showToast(`Found train ${currentJourney.trainNumber}!`);
+        } else {
+          document.getElementById('journey-result-container').style.display = 'none';
+          showToast('No journeys found for selected date', true);
+        }
+      } catch (err) {
+        logEvent('GET', '/api/journeys/search', 'ERR', err.message);
+        showToast('Journey search failed: ' + err.message, true);
+      }
+    }
+
+    // Load Coach Seats
+    async function loadCoachSeats() {
+      if (!currentJourney) return;
+      baseUrl = getBaseUrl();
+      const url = `${baseUrl}/api/journeys/${currentJourney.id}/seats`;
+
+      try {
+        const res = await fetch(url);
+        allSeats = await res.json();
+        logEvent('GET', `/api/journeys/${currentJourney.id}/seats`, res.status, `Loaded ${allSeats.length} seats`);
+        renderCoachSeats();
+        showToast(`Loaded ${allSeats.length} seats across all coaches!`);
+      } catch (err) {
+        logEvent('GET', `/api/journeys/${currentJourney.id}/seats`, 'ERR', err.message);
+        showToast('Failed to load seats', true);
+      }
+    }
+
+    function switchCoach(coachNum) {
+      activeCoach = coachNum;
+      document.querySelectorAll('.coach-tab').forEach(t => {
+        t.classList.toggle('active', t.textContent.includes(coachNum));
+      });
+      renderCoachSeats();
+    }
+
+    function renderCoachSeats() {
+      const container = document.getElementById('seat-grid-container');
+      container.innerHTML = '';
+
+      const coachSeats = allSeats.filter(s => s.coachNumber === activeCoach);
+      if (coachSeats.length === 0) {
+        container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">No seats found for Coach ${activeCoach}</div>`;
+        return;
+      }
+
+      coachSeats.forEach(seat => {
+        const card = document.createElement('div');
+        const status = seat.status.toLowerCase();
+        const isSelected = selectedSeatIds.has(seat.inventoryId);
+
+        card.className = `seat-card ${status} ${isSelected ? 'selected' : ''}`;
+        card.innerHTML = `
+          <div class="seat-num">${seat.seatNumber}</div>
+          <div class="seat-berth">${seat.berthType}</div>
+          <div class="seat-status-pill">${isSelected ? 'SELECTED' : seat.status}</div>
+        `;
+
+        if (status === 'available') {
+          card.onclick = () => toggleSeatSelection(seat.inventoryId, seat.seatNumber);
+        }
+
+        container.appendChild(card);
+      });
+
+      updateSelectionUI();
+    }
+
+    function toggleSeatSelection(inventoryId, seatNum) {
+      if (selectedSeatIds.has(inventoryId)) {
+        selectedSeatIds.delete(inventoryId);
+      } else {
+        selectedSeatIds.add(inventoryId);
+      }
+      renderCoachSeats();
+    }
+
+    function updateSelectionUI() {
+      const count = selectedSeatIds.size;
+      document.getElementById('selected-counter').innerText = `${count} Seats Selected`;
+      document.getElementById('btn-hold-seats').disabled = count === 0;
+
+      // Update seat label
+      if (count > 0) {
+        const selectedObj = allSeats.filter(s => selectedSeatIds.has(s.inventoryId));
+        const labels = selectedObj.map(s => `${s.coachNumber}-${s.seatNumber} (${s.berthType})`).join(', ');
+        document.getElementById('selected-seat-names').innerText = labels;
+      } else {
+        document.getElementById('selected-seat-names').innerText = 'None';
+      }
+    }
+
+    // Step 2 Action: Hold Seats
+    async function holdSelectedSeats() {
+      if (selectedSeatIds.size === 0 || !currentJourney || !currentUser) return;
+      baseUrl = getBaseUrl();
+
+      const idempotencyKey = 'web-hold-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      const payload = {
+        journeyId: currentJourney.id,
+        seatIds: Array.from(selectedSeatIds),
+        userId: currentUser.id
+      };
+
+      try {
+        const res = await fetch(`${baseUrl}/api/bookings/hold`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': idempotencyKey,
+            'X-User-Id': currentUser.id
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        logEvent('POST', '/api/bookings/hold', res.status, data);
+
+        if (res.ok) {
+          currentBooking = data;
+          selectedSeatIds.clear();
+          showToast(`Seats held successfully! Booking ID: ${data.id.substring(0,8)}...`);
+          
+          // Re-render seats to reflect HELD status
+          await loadCoachSeats();
+          updateBookingWorkflowUI(data);
+          startCountdown(300); // 5 minutes
+        } else {
+          throw new Error(data.debugMessage || data.detail || 'Hold failed');
+        }
+      } catch (err) {
+        logEvent('POST', '/api/bookings/hold', 'ERR', err.message);
+        showToast('Failed to hold seats: ' + err.message, true);
+      }
+    }
+
+    // Step 3 Action: Confirm Booking
+    async function confirmCurrentBooking() {
+      if (!currentBooking) return;
+      baseUrl = getBaseUrl();
+
+      try {
+        const res = await fetch(`${baseUrl}/api/bookings/${currentBooking.id}/confirm`, {
+          method: 'POST',
+          headers: { 'X-User-Id': currentUser.id }
+        });
+
+        const data = await res.json();
+        logEvent('POST', `/api/bookings/${currentBooking.id}/confirm`, res.status, data);
+
+        if (res.ok) {
+          currentBooking = data;
+          showToast('Booking initiated: Status PAYMENT_PENDING');
+          updateBookingWorkflowUI(data);
+        } else {
+          throw new Error(data.debugMessage || data.detail || 'Confirm failed');
+        }
+      } catch (err) {
+        logEvent('POST', `/api/bookings/${currentBooking.id}/confirm`, 'ERR', err.message);
+        showToast('Confirm failed: ' + err.message, true);
+      }
+    }
+
+    // Step 3 Action: Simulate Payment
+    async function simulatePayment(paymentStatus) {
+      if (!currentBooking) return;
+      baseUrl = getBaseUrl();
+
+      const payload = {
+        status: paymentStatus,
+        eventId: 'evt-' + Date.now()
+      };
+
+      try {
+        const res = await fetch(`${baseUrl}/api/bookings/${currentBooking.id}/simulate-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        logEvent('POST', `/api/bookings/${currentBooking.id}/simulate-payment`, res.status, data);
+
+        if (res.ok) {
+          currentBooking = data;
+          clearInterval(countdownInterval);
+          if (paymentStatus === 'SUCCESS') {
+            showToast('🎉 Payment Successful! Booking CONFIRMED!');
+          } else {
+            showToast('⚠️ Payment Failed. Hold cancelled.', true);
+          }
+          updateBookingWorkflowUI(data);
+          await loadCoachSeats();
+        } else {
+          throw new Error(data.debugMessage || data.detail || 'Payment simulation failed');
+        }
+      } catch (err) {
+        logEvent('POST', `/api/bookings/${currentBooking.id}/simulate-payment`, 'ERR', err.message);
+        showToast('Payment simulation error: ' + err.message, true);
+      }
+    }
+
+    // Cancel Booking
+    async function cancelCurrentBooking() {
+      if (!currentBooking) return;
+      baseUrl = getBaseUrl();
+
+      try {
+        const res = await fetch(`${baseUrl}/api/bookings/${currentBooking.id}/cancel`, {
+          method: 'POST',
+          headers: { 'X-User-Id': currentUser.id }
+        });
+
+        const data = await res.json();
+        logEvent('POST', `/api/bookings/${currentBooking.id}/cancel`, res.status, data);
+
+        if (res.ok) {
+          currentBooking = data;
+          clearInterval(countdownInterval);
+          showToast('Booking cancelled. Seats released.');
+          updateBookingWorkflowUI(data);
+          await loadCoachSeats();
+        } else {
+          throw new Error(data.debugMessage || data.detail || 'Cancel failed');
+        }
+      } catch (err) {
+        logEvent('POST', `/api/bookings/${currentBooking.id}/cancel`, 'ERR', err.message);
+        showToast('Cancel failed: ' + err.message, true);
+      }
+    }
+
+    // Reconciliation Run
+    async function triggerReconciliation() {
+      baseUrl = getBaseUrl();
+      try {
+        const res = await fetch(`${baseUrl}/api/bookings/reconciliation/run`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+        logEvent('POST', '/api/bookings/reconciliation/run', res.status, data);
+        showToast(`Reconciliation finished: Expired ${data.expiredCount || 0} holds`);
+        if (currentJourney) await loadCoachSeats();
+      } catch (err) {
+        logEvent('POST', '/api/bookings/reconciliation/run', 'ERR', err.message);
+        showToast('Reconciliation failed: ' + err.message, true);
+      }
+    }
+
+    // UI State Machine Sync
+    function updateBookingWorkflowUI(bk) {
+      const detailsBox = document.getElementById('booking-details-box');
+      const noBkMsg = document.getElementById('no-booking-msg');
+      const badge = document.getElementById('current-booking-status-badge');
+
+      if (!bk) {
+        detailsBox.style.display = 'none';
+        noBkMsg.style.display = 'block';
+        badge.innerText = 'NO ACTIVE BOOKING';
+        badge.className = 'badge badge-info';
+        return;
+      }
+
+      detailsBox.style.display = 'block';
+      noBkMsg.style.display = 'none';
+
+      document.getElementById('bk-id').innerText = bk.id;
+      document.getElementById('bk-status').innerText = bk.status;
+      document.getElementById('bk-idempotency').innerText = bk.idempotencyKey || 'N/A';
+      document.getElementById('bk-seats').innerText = `${bk.items ? bk.items.length : 1} Seat(s)`;
+
+      badge.innerText = bk.status;
+
+      // Stepper classes
+      const sSelect = document.getElementById('step-select');
+      const sHeld = document.getElementById('step-held');
+      const sPending = document.getElementById('step-pending');
+      const sConfirmed = document.getElementById('step-confirmed');
+
+      [sSelect, sHeld, sPending, sConfirmed].forEach(el => el.className = 'step-item');
+
+      const btnConfirm = document.getElementById('btn-confirm');
+      const btnPaySuccess = document.getElementById('btn-pay-success');
+      const btnPayFail = document.getElementById('btn-pay-fail');
+      const btnCancel = document.getElementById('btn-cancel');
+      const timerBox = document.getElementById('timer-box');
+
+      if (bk.status === 'HELD') {
+        badge.className = 'badge badge-warning';
+        sSelect.classList.add('completed');
+        sHeld.classList.add('active');
+        btnConfirm.style.display = 'inline-flex';
+        btnPaySuccess.style.display = 'none';
+        btnPayFail.style.display = 'none';
+        btnCancel.style.display = 'inline-flex';
+        timerBox.style.display = 'flex';
+      } else if (bk.status === 'PAYMENT_PENDING') {
+        badge.className = 'badge badge-info';
+        sSelect.classList.add('completed');
+        sHeld.classList.add('completed');
+        sPending.classList.add('active');
+        btnConfirm.style.display = 'none';
+        btnPaySuccess.style.display = 'inline-flex';
+        btnPayFail.style.display = 'inline-flex';
+        btnCancel.style.display = 'inline-flex';
+        timerBox.style.display = 'flex';
+      } else if (bk.status === 'CONFIRMED') {
+        badge.className = 'badge badge-success';
+        sSelect.classList.add('completed');
+        sHeld.classList.add('completed');
+        sPending.classList.add('completed');
+        sConfirmed.classList.add('completed');
+        btnConfirm.style.display = 'none';
+        btnPaySuccess.style.display = 'none';
+        btnPayFail.style.display = 'none';
+        btnCancel.style.display = 'none';
+        timerBox.style.display = 'none';
+      } else {
+        badge.className = 'badge badge-danger';
+        timerBox.style.display = 'none';
+        btnConfirm.style.display = 'none';
+        btnPaySuccess.style.display = 'none';
+        btnPayFail.style.display = 'none';
+        btnCancel.style.display = 'none';
+      }
+    }
+
+    function startCountdown(seconds) {
+      clearInterval(countdownInterval);
+      let rem = seconds;
+      const el = document.getElementById('countdown-timer');
+
+      countdownInterval = setInterval(() => {
+        rem--;
+        if (rem <= 0) {
+          clearInterval(countdownInterval);
+          el.innerText = '00:00 (EXPIRED)';
+          showToast('Hold has expired', true);
+          return;
+        }
+        const m = Math.floor(rem / 60).toString().padStart(2, '0');
+        const s = (rem % 60).toString().padStart(2, '0');
+        el.innerText = `${m}:${s}`;
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
