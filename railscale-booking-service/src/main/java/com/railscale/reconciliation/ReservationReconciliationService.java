@@ -36,6 +36,12 @@ public class ReservationReconciliationService {
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
     private final Duration paymentTimeout;
+    private com.railscale.metrics.BookingMetrics bookingMetrics;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setBookingMetrics(com.railscale.metrics.BookingMetrics bookingMetrics) {
+        this.bookingMetrics = bookingMetrics;
+    }
 
     public ReservationReconciliationService(
         SeatInventoryRepository seatInventoryRepository,
@@ -120,6 +126,9 @@ public class ReservationReconciliationService {
                 ));
                 count++;
             }
+        }
+        if (bookingMetrics != null && count > 0) {
+            bookingMetrics.incrementSeatHoldExpired(count);
         }
         return count;
     }

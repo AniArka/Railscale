@@ -46,6 +46,12 @@ public class OutboxPublisher {
     private final UUID publisherId = UUID.randomUUID();
     private final int batchSize;
     private final Duration leaseDuration;
+    private com.railscale.metrics.BookingMetrics bookingMetrics;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setBookingMetrics(com.railscale.metrics.BookingMetrics bookingMetrics) {
+        this.bookingMetrics = bookingMetrics;
+    }
 
     public OutboxPublisher(
         OutboxEventRepository outboxEventRepository,
@@ -159,6 +165,9 @@ public class OutboxPublisher {
     }
 
     public void recordFailure(UUID eventId, String error) {
+        if (bookingMetrics != null) {
+            bookingMetrics.incrementKafkaPublishFailures();
+        }
         String truncatedError = error != null && error.length() > 500
             ? error.substring(0, 500) : error;
         transactionTemplate.executeWithoutResult(status ->

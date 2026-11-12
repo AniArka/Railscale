@@ -67,6 +67,7 @@ public class BookingService {
     // Redis services are optional — null when Redis is not configured
     private RedisLockService redisLockService;
     private SeatCacheService seatCacheService;
+    private com.railscale.metrics.BookingMetrics bookingMetrics;
 
     private final Duration holdTimeout;
     private final Duration paymentTimeout;
@@ -105,6 +106,11 @@ public class BookingService {
     @Autowired(required = false)
     public void setSeatCacheService(SeatCacheService seatCacheService) {
         this.seatCacheService = seatCacheService;
+    }
+
+    @Autowired(required = false)
+    public void setBookingMetrics(com.railscale.metrics.BookingMetrics bookingMetrics) {
+        this.bookingMetrics = bookingMetrics;
     }
 
     /**
@@ -151,6 +157,11 @@ public class BookingService {
 
         // 3. Acquire Redis distributed locks (Section 16-17)
         //    If Redis unavailable or not configured, returns empty — fall back to DB-only (Invariant 5)
+        if (bookingMetrics != null) {
+            bookingMetrics.incrementBookingRequests();
+        }
+        long holdStartTime = System.nanoTime();
+
         Optional<String> ownerToken = redisLockService != null
             ? redisLockService.acquireLocks(request.journeyId(), requestedSeatIds)
             : Optional.empty();
@@ -160,10 +171,26 @@ public class BookingService {
             BookingService self = applicationContext.getBean(BookingService.class);
             BookingResponse response = self.holdSeatsInternal(userId, request, idempotencyKey, requestedSeatIds);
 
+            if (bookingMetrics != null) {
+                bookingMetrics.incrementSeatHold(requestedSeatIds.size());
+                bookingMetrics.recordBookingLatency(Duration.ofNanos(System.nanoTime() - holdStartTime));
+            }
+
             // 5. Update seat cache after successful hold
             updateCacheAfterHold(request.journeyId(), requestedSeatIds);
 
             return response;
+        } catch (ConflictException e) {
+            if (bookingMetrics != null) {
+                bookingMetrics.incrementSeatContention();
+                bookingMetrics.incrementBookingFailure("CONFLICT");
+            }
+            throw e;
+        } catch (Exception e) {
+            if (bookingMetrics != null) {
+                bookingMetrics.incrementBookingFailure(e.getClass().getSimpleName());
+            }
+            throw e;
         } finally {
             // 6. Always release Redis locks (Section 18)
             ownerToken.ifPresent(token -> {
@@ -392,6 +419,10 @@ public class BookingService {
                 booking.setStatus(BookingStatus.CONFIRMED);
                 bookingRepository.save(booking);
 
+                if (bookingMetrics != null) {
+                    bookingMetrics.incrementBookingSuccess();
+                }
+
                 paymentRepository.findByBookingId(bookingId).ifPresent(p -> {
                     p.setStatus(PaymentStatus.SUCCESS);
                     paymentRepository.save(p);
@@ -416,6 +447,10 @@ public class BookingService {
 
                 booking.setStatus(BookingStatus.FAILED);
                 bookingRepository.save(booking);
+
+                if (bookingMetrics != null) {
+                    bookingMetrics.incrementBookingFailure("PAYMENT_FAILED");
+                }
 
                 paymentRepository.findByBookingId(bookingId).ifPresent(p -> {
                     p.setStatus(PaymentStatus.FAILED);
@@ -455,6 +490,10 @@ public class BookingService {
                         "reason", "PAYMENT_ARRIVED_AFTER_EXPIRY"
                     ))
                 ));
+
+                if (bookingMetrics != null) {
+                    bookingMetrics.incrementRefundRequired();
+                }
             }
         }
 
@@ -505,6 +544,9 @@ public class BookingService {
                 "RefundRequired",
                 toJson(Map.of("bookingId", booking.getId(), "amount", booking.getTotalAmount(), "reason", "CANCELLATION"))
             ));
+            if (bookingMetrics != null) {
+                bookingMetrics.incrementRefundRequired();
+            }
             outboxEventRepository.save(new OutboxEvent(
                 "Booking",
                 booking.getId(),
