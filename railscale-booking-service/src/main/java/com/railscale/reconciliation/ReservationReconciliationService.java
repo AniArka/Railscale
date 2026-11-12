@@ -56,6 +56,7 @@ public class ReservationReconciliationService {
     public record ReconciliationReport(int expiredHoldsCount, int expiredPaymentsCount) {}
 
     @Scheduled(fixedDelayString = "${railscale.reconciliation.interval-ms:5000}")
+    @Transactional
     public void scheduledReconciliation() {
         try {
             ReconciliationReport report = runReconciliation();

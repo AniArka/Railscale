@@ -14,13 +14,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Outbox Publisher Service (Architecture Sections 14-15).
@@ -43,6 +42,7 @@ public class OutboxPublisher {
     private final OutboxEventRepository outboxEventRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
     private final UUID publisherId = UUID.randomUUID();
     private final int batchSize;
     private final Duration leaseDuration;
@@ -51,12 +51,14 @@ public class OutboxPublisher {
         OutboxEventRepository outboxEventRepository,
         KafkaTemplate<String, String> kafkaTemplate,
         ObjectMapper objectMapper,
+        TransactionTemplate transactionTemplate,
         @Value("${railscale.outbox.batch-size:50}") int batchSize,
         @Value("${railscale.outbox.lease-duration-ms:30000}") long leaseDurationMs
     ) {
         this.outboxEventRepository = outboxEventRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.transactionTemplate = transactionTemplate;
         this.batchSize = batchSize;
         this.leaseDuration = Duration.ofMillis(leaseDurationMs);
     }
@@ -64,16 +66,17 @@ public class OutboxPublisher {
     /**
      * Scheduled polling to publish outbox events to Kafka.
      * Runs at a fixed rate configured by railscale.outbox.poll-interval-ms.
+     * Network calls to Kafka occur outside the DB transaction (Invariant 4 / Section 15).
      */
     @Scheduled(fixedDelayString = "${railscale.outbox.poll-interval-ms:1000}")
     public void pollAndPublish() {
         try {
-            // 1. Release any expired claims from crashed publishers
+            // 1. Release any expired claims from crashed publishers in an isolated transaction
             releaseExpiredClaims();
 
-            // 2. Find and claim a batch of events
+            // 2. Find and claim a batch of events in an isolated transaction
             List<OutboxEvent> claimedEvents = claimBatch();
-            if (claimedEvents.isEmpty()) {
+            if (claimedEvents == null || claimedEvents.isEmpty()) {
                 return;
             }
 
@@ -91,35 +94,37 @@ public class OutboxPublisher {
     /**
      * Step 1: Release expired claims so other publishers can reclaim.
      */
-    @Transactional
     public void releaseExpiredClaims() {
-        int released = outboxEventRepository.releaseExpiredClaims(Instant.now());
-        if (released > 0) {
-            log.info("Released {} expired outbox claims", released);
-        }
+        transactionTemplate.executeWithoutResult(status -> {
+            int released = outboxEventRepository.releaseExpiredClaims(Instant.now());
+            if (released > 0) {
+                log.info("Released {} expired outbox claims", released);
+            }
+        });
     }
 
     /**
      * Step 2: Find claimable events and atomically claim them.
      * Returns the list of claimed events.
      */
-    @Transactional
     public List<OutboxEvent> claimBatch() {
-        Instant now = Instant.now();
-        List<OutboxEvent> events = outboxEventRepository.findClaimableEvents(
-            now, PageRequest.of(0, batchSize)
-        );
+        return transactionTemplate.execute(status -> {
+            Instant now = Instant.now();
+            List<OutboxEvent> events = outboxEventRepository.findClaimableEvents(
+                now, PageRequest.of(0, batchSize)
+            );
 
-        if (events.isEmpty()) {
-            return List.of();
-        }
+            if (events == null || events.isEmpty()) {
+                return List.of();
+            }
 
-        List<UUID> eventIds = events.stream().map(OutboxEvent::getId).toList();
-        Instant claimedUntil = now.plus(leaseDuration);
+            List<UUID> eventIds = events.stream().map(OutboxEvent::getId).toList();
+            Instant claimedUntil = now.plus(leaseDuration);
 
-        outboxEventRepository.claimBatch(eventIds, publisherId, claimedUntil);
+            outboxEventRepository.claimBatch(eventIds, publisherId, claimedUntil);
 
-        return events;
+            return events;
+        });
     }
 
     /**
@@ -147,16 +152,18 @@ public class OutboxPublisher {
         }
     }
 
-    @Transactional
     public void markPublished(UUID eventId) {
-        outboxEventRepository.markPublished(eventId, Instant.now());
+        transactionTemplate.executeWithoutResult(status ->
+            outboxEventRepository.markPublished(eventId, Instant.now())
+        );
     }
 
-    @Transactional
     public void recordFailure(UUID eventId, String error) {
         String truncatedError = error != null && error.length() > 500
             ? error.substring(0, 500) : error;
-        outboxEventRepository.recordFailure(eventId, truncatedError);
+        transactionTemplate.executeWithoutResult(status ->
+            outboxEventRepository.recordFailure(eventId, truncatedError)
+        );
     }
 
     /**
