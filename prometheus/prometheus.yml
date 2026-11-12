@@ -76,3 +76,10 @@ scrape_configs:
       - targets: ['notification-service:8085']
         labels:
           service: notification-service
+
+  # Zipkin (self-monitoring via its own /metrics if available)
+  - job_name: zipkin
+    static_configs:
+      - targets: ['zipkin:9411']
+        labels:
+          service: zipkin

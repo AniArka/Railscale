@@ -82,6 +82,9 @@ services:
       - "8761:8761"
     environment:
       EUREKA_HOSTNAME: eureka-server
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      - zipkin
 
   # -------------------------------------------------------------
   # Public Gateway (Section 27, 29, 30) - Only service exposed externally
@@ -101,6 +104,7 @@ services:
       USER_SERVICE_URL: lb://user-service
       SEARCH_SERVICE_URL: lb://search-service
       BOOKING_SERVICE_URL: lb://booking-service
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       - eureka-server
       - user-service
@@ -122,6 +126,7 @@ services:
       SPRING_DATASOURCE_USERNAME: railscale
       SPRING_DATASOURCE_PASSWORD: railscale
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,6 +146,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: railscale
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,6 +170,7 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       postgres:
         condition: service_healthy
@@ -184,6 +191,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       kafka:
         condition: service_started
@@ -203,6 +211,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: railscale
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     depends_on:
       postgres:
         condition: service_healthy
@@ -212,8 +221,16 @@ services:
         condition: service_started
 
   # -------------------------------------------------------------
-  # Observability stack (Section 41) — Prometheus + Grafana
+  # Observability stack (Section 41) — Prometheus + Grafana + Zipkin
   # -------------------------------------------------------------
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: railscale-zipkin
+    networks:
+      - internal-network
+    ports:
+      - "9411:9411"
+
   prometheus:
     image: prom/prometheus:v2.52.0
     container_name: railscale-prometheus
