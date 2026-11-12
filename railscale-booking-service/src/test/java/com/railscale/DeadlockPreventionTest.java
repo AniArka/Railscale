@@ -7,6 +7,7 @@ import com.railscale.booking.repository.BookingItemRepository;
 import com.railscale.booking.repository.BookingRepository;
 import com.railscale.booking.service.BookingService;
 import com.railscale.common.exception.ConflictException;
+import com.railscale.idempotency.repository.IdempotencyKeyRepository;
 import com.railscale.inventory.domain.SeatInventory;
 import com.railscale.inventory.repository.SeatInventoryRepository;
 import com.railscale.journey.domain.Journey;
@@ -87,6 +88,9 @@ class DeadlockPreventionTest {
     @Autowired
     private BookingItemRepository bookingItemRepository;
 
+    @Autowired
+    private IdempotencyKeyRepository idempotencyKeyRepository;
+
     private User userA;
     private User userB;
     private Journey journey;
@@ -103,6 +107,7 @@ class DeadlockPreventionTest {
         coachRepository.deleteAll();
         trainRepository.deleteAll();
         stationRepository.deleteAll();
+        idempotencyKeyRepository.deleteAll();
         userRepository.deleteAll();
 
         userA = userRepository.save(new User("userA@test.com", "pass", "User A", Role.USER));
