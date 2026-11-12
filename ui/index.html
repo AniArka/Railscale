@@ -1364,6 +1364,16 @@
       }
     }
 
+    function generateUUID() {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
     // Step 3 Action: Simulate Payment
     async function simulatePayment(paymentStatus) {
       if (!currentBooking) return;
@@ -1371,7 +1381,7 @@
 
       const payload = {
         status: paymentStatus,
-        eventId: 'evt-' + Date.now()
+        eventId: generateUUID()
       };
 
       try {
