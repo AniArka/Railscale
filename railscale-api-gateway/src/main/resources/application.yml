@@ -12,21 +12,69 @@ spring:
       discovery:
         locator:
           enabled: false
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 3s
       routes:
         - id: user-service
           uri: ${USER_SERVICE_URL:lb://user-service}
           predicates:
             - Path=/api/users/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: userServiceCircuitBreaker
+                fallbackUri: forward:/fallback/users
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY, GATEWAY_TIMEOUT, SERVICE_UNAVAILABLE
+                methods: GET
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+                  basedOnPreviousValue: false
 
         - id: search-service
           uri: ${SEARCH_SERVICE_URL:lb://search-service}
           predicates:
             - Path=/api/search/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: searchServiceCircuitBreaker
+                fallbackUri: forward:/fallback/search
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY, GATEWAY_TIMEOUT, SERVICE_UNAVAILABLE
+                methods: GET
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+                  basedOnPreviousValue: false
 
         - id: booking-service
           uri: ${BOOKING_SERVICE_URL:lb://booking-service}
           predicates:
             - Path=/api/bookings/**, /api/journeys/**, /api/trains/**, /api/stations/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: bookingServiceCircuitBreaker
+                fallbackUri: forward:/fallback/bookings
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY, GATEWAY_TIMEOUT, SERVICE_UNAVAILABLE
+                methods: GET
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+                  basedOnPreviousValue: false
 
 eureka:
   client:
@@ -36,6 +84,37 @@ eureka:
     fetch-registry: true
   instance:
     prefer-ip-address: true
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+    instances:
+      userServiceCircuitBreaker:
+        baseConfig: default
+      searchServiceCircuitBreaker:
+        baseConfig: default
+      bookingServiceCircuitBreaker:
+        baseConfig: default
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 3s
+        cancelRunningFuture: true
+    instances:
+      userServiceCircuitBreaker:
+        baseConfig: default
+      searchServiceCircuitBreaker:
+        baseConfig: default
+      bookingServiceCircuitBreaker:
+        baseConfig: default
 
 logging:
   level:
