@@ -12,6 +12,7 @@ import com.railscale.booking.repository.BookingRepository;
 import com.railscale.common.exception.BadRequestException;
 import com.railscale.common.exception.ConflictException;
 import com.railscale.common.exception.ResourceNotFoundException;
+import com.railscale.common.logging.StructuredLogger;
 import com.railscale.event.domain.ProcessedEvent;
 import com.railscale.event.domain.ProcessedEventId;
 import com.railscale.event.repository.ProcessedEventRepository;
@@ -176,6 +177,19 @@ public class BookingService {
                 bookingMetrics.recordBookingLatency(Duration.ofNanos(System.nanoTime() - holdStartTime));
             }
 
+            // Structured domain event log (Section 41)
+            StructuredLogger.logEvent(
+                log,
+                "BOOKING_HOLD_SUCCESS",
+                response.bookingId(),
+                userId,
+                "201",
+                (System.nanoTime() - holdStartTime) / 1_000_000,
+                "Held {} seats for booking {} successfully",
+                requestedSeatIds.size(),
+                response.bookingId()
+            );
+
             // 5. Update seat cache after successful hold
             updateCacheAfterHold(request.journeyId(), requestedSeatIds);
 
@@ -185,11 +199,33 @@ public class BookingService {
                 bookingMetrics.incrementSeatContention();
                 bookingMetrics.incrementBookingFailure("CONFLICT");
             }
+            StructuredLogger.logEvent(
+                log,
+                "BOOKING_HOLD_CONTENTION",
+                null,
+                userId,
+                "409",
+                (System.nanoTime() - holdStartTime) / 1_000_000,
+                "Seat contention during hold for user {}: {}",
+                userId,
+                e.getMessage()
+            );
             throw e;
         } catch (Exception e) {
             if (bookingMetrics != null) {
                 bookingMetrics.incrementBookingFailure(e.getClass().getSimpleName());
             }
+            StructuredLogger.logEvent(
+                log,
+                "BOOKING_HOLD_ERROR",
+                null,
+                userId,
+                "500",
+                (System.nanoTime() - holdStartTime) / 1_000_000,
+                "Booking hold failure for user {}: {}",
+                userId,
+                e.getMessage()
+            );
             throw e;
         } finally {
             // 6. Always release Redis locks (Section 18)
@@ -500,6 +536,18 @@ public class BookingService {
         // Invalidate seat cache after payment processing
         if (seatCacheService != null) seatCacheService.invalidateJourneyCache(booking.getJourneyId());
 
+        StructuredLogger.logEvent(
+            log,
+            "PAYMENT_RESULT_PROCESSED",
+            bookingId,
+            booking.getUserId(),
+            booking.getStatus().name(),
+            null,
+            "Payment result processed for booking {}: status={}",
+            bookingId,
+            booking.getStatus()
+        );
+
         return BookingResponse.fromEntity(booking);
     }
 
@@ -583,6 +631,18 @@ public class BookingService {
 
         // Invalidate seat cache after cancellation
         if (seatCacheService != null) seatCacheService.invalidateJourneyCache(booking.getJourneyId());
+
+        StructuredLogger.logEvent(
+            log,
+            "BOOKING_CANCELLED",
+            bookingId,
+            booking.getUserId(),
+            booking.getStatus().name(),
+            null,
+            "Booking {} cancelled by user {}",
+            bookingId,
+            userId
+        );
 
         return BookingResponse.fromEntity(booking);
     }
