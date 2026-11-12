@@ -21,8 +21,7 @@ public interface SeatInventoryRepository extends JpaRepository<SeatInventory, UU
 
     Optional<SeatInventory> findByJourneyIdAndSeatId(UUID journeyId, UUID seatId);
 
-    @EntityGraph(attributePaths = {"seat", "seat.coach"})
-    @Query("SELECT s FROM SeatInventory s WHERE s.journeyId = :journeyId ORDER BY s.id ASC")
+    @Query("SELECT s FROM SeatInventory s LEFT JOIN FETCH s.seat st LEFT JOIN FETCH st.coach c WHERE s.journeyId = :journeyId ORDER BY s.id ASC")
     List<SeatInventory> findWithSeatDetailsByJourneyId(@Param("journeyId") UUID journeyId);
 
     List<SeatInventory> findByJourneyIdAndIdInOrderById(UUID journeyId, Collection<UUID> ids);
