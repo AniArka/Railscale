@@ -1,0 +1,78 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: railscale
+    env: local
+
+# ---------------------------------------------------------------------------
+# Alerting (placeholder — wire alertmanager here when added)
+# ---------------------------------------------------------------------------
+alerting:
+  alertmanagers: []
+
+# ---------------------------------------------------------------------------
+# Scrape configurations — all services expose /actuator/prometheus
+# ---------------------------------------------------------------------------
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Eureka discovery server
+  - job_name: eureka-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['eureka-server:8761']
+        labels:
+          service: eureka-server
+
+  # API Gateway (Spring Cloud Gateway)
+  - job_name: api-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['api-gateway:8080']
+        labels:
+          service: api-gateway
+
+  # User Service
+  - job_name: user-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['user-service:8081']
+        labels:
+          service: user-service
+
+  # Search Service
+  - job_name: search-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['search-service:8082']
+        labels:
+          service: search-service
+
+  # Booking Service (primary domain metrics)
+  - job_name: booking-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['booking-service:8083']
+        labels:
+          service: booking-service
+
+  # Payment Service
+  - job_name: payment-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['payment-service:8084']
+        labels:
+          service: payment-service
+
+  # Notification Service
+  - job_name: notification-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['notification-service:8085']
+        labels:
+          service: notification-service
