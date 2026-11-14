@@ -1,20 +1,28 @@
-version: '3.8'
+networks:
+  public-network:
+    driver: bridge
+  internal-network:
+    driver: bridge
 
 services:
+  # -------------------------------------------------------------
+  # Infrastructure
+  # -------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: railscale-postgres
-    restart: unless-stopped
+    networks:
+      - internal-network
     environment:
-      POSTGRES_DB: railscale_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: railscale
+      POSTGRES_USER: railscale
+      POSTGRES_PASSWORD: railscale
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d railscale_db"]
+      test: ["CMD-SHELL", "pg_isready -U railscale -d railscale"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,17 +30,243 @@ services:
   redis:
     image: redis:7-alpine
     container_name: railscale-redis
-    restart: unless-stopped
+    networks:
+      - internal-network
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: railscale-zookeeper
+    networks:
+      - internal-network
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: railscale-kafka
+    networks:
+      - internal-network
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # -------------------------------------------------------------
+  # Service Discovery (Section 30)
+  # -------------------------------------------------------------
+  eureka-server:
+    build:
+      context: .
+      dockerfile: railscale-eureka-server/Dockerfile
+    container_name: railscale-eureka-server
+    networks:
+      - internal-network
+    ports:
+      - "8761:8761"
+    environment:
+      EUREKA_HOSTNAME: eureka-server
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      - zipkin
+
+  # -------------------------------------------------------------
+  # Public Gateway (Section 27, 29, 30) - Only service exposed externally
+  # -------------------------------------------------------------
+  api-gateway:
+    build:
+      context: .
+      dockerfile: railscale-api-gateway/Dockerfile
+    container_name: railscale-api-gateway
+    networks:
+      - public-network
+      - internal-network
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      USER_SERVICE_URL: lb://user-service
+      SEARCH_SERVICE_URL: lb://search-service
+      BOOKING_SERVICE_URL: lb://booking-service
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      - eureka-server
+      - user-service
+      - search-service
+      - booking-service
+
+  # -------------------------------------------------------------
+  # Microservices (internal-network only per Section 29)
+  # -------------------------------------------------------------
+  user-service:
+    build:
+      context: .
+      dockerfile: railscale-user-service/Dockerfile
+    container_name: railscale-user-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+
+  search-service:
+    build:
+      context: .
+      dockerfile: railscale-search-service/Dockerfile
+    container_name: railscale-search-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: railscale-booking-service/Dockerfile
+    container_name: railscale-booking-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: railscale-payment-service/Dockerfile
+    container_name: railscale-payment-service
+    networks:
+      - internal-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: railscale-notification-service/Dockerfile
+    container_name: railscale-notification-service
+    networks:
+      - internal-network
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/railscale
+      SPRING_DATASOURCE_USERNAME: railscale
+      SPRING_DATASOURCE_PASSWORD: railscale
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+
+  # -------------------------------------------------------------
+  # Observability stack (Section 41) — Prometheus + Grafana + Zipkin
+  # -------------------------------------------------------------
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: railscale-zipkin
+    networks:
+      - internal-network
+    ports:
+      - "9411:9411"
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: railscale-prometheus
+    networks:
+      - internal-network
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - eureka-server
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: railscale-grafana
+    networks:
+      - internal-network
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: railscale
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/railscale-booking.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
-  postgres_data:
-  redis_data:
+  pgdata:
+  prometheus-data:
+  grafana-data:

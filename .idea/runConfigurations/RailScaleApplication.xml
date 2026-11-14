@@ -1,13 +1,12 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="RailScaleApplication" type="Application" factoryName="Application" nameIsGenerated="true">
     <envs>
-      <env name="SPRING_DATASOURCE_URL" value="jdbc:postgresql://127.0.0.1:5432/railscale_db" />
-      <env name="SPRING_DATASOURCE_USERNAME" value="postgres" />
-      <env name="SPRING_DATASOURCE_PASSWORD" value="postgres" />
+      <env name="SPRING_DATASOURCE_URL" value="jdbc:postgresql://127.0.0.1:5432/railscale" />
+      <env name="SPRING_DATASOURCE_USERNAME" value="railscale" />
+      <env name="SPRING_DATASOURCE_PASSWORD" value="password" />
     </envs>
     <option name="MAIN_CLASS_NAME" value="com.railscale.RailScaleApplication" />
-    <module name="booking-service" />
-    <option name="PROGRAM_PARAMETERS" value="--spring.datasource.url=jdbc:postgresql://127.0.0.1:5432/railscale_db --spring.datasource.username=postgres --spring.datasource.password=postgres" />
+    <module name="railscale-booking-service" />
     <extension name="coverage">
       <pattern>
         <option name="PATTERN" value="com.railscale.*" />
